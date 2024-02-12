@@ -46,6 +46,7 @@ class TzktOperationType(Enum):
     origination = 'origination'
     migration = 'migration'
     sr_execute = 'sr_execute'
+    sr_cement = 'sr_cement'
 
 
 class TzktMessageType(MessageType, Enum):
@@ -106,6 +107,18 @@ class SmartRollupExecuteSubscription(TzktSubscription):
 
     def get_request(self) -> list[dict[str, Any]]:
         request: dict[str, Any] = {'types': 'sr_execute'}
+        if self.address:
+            request['address'] = self.address
+        return [request]
+
+@dataclass(frozen=True)
+class SmartRollupCementSubscription(TzktSubscription):
+    type: Literal['sr_cement'] = 'sr_cement'
+    method: Literal['SubscribeToOperations'] = 'SubscribeToOperations'
+    address: str | None = None
+
+    def get_request(self) -> list[dict[str, Any]]:
+        request: dict[str, Any] = {'types': 'sr_cement'}
         if self.address:
             request['address'] = self.address
         return [request]
@@ -233,7 +246,7 @@ class TzktOperationData(HasLevel):
             amount = operation_json.get('amount')
 
         commitment_json = operation_json.get('commitment') or {}
-        if type_ == 'sr_execute':
+        if operation_json['type'] in ['sr_execute', 'sr_cement']:
             target_json = operation_json.get('rollup') or {}
             initiator_json = commitment_json.get('initiator') or {}
 
@@ -365,6 +378,21 @@ class TzktSmartRollupExecute:
 
     @classmethod
     def create(cls, operation_data: TzktOperationData) -> 'TzktSmartRollupExecute':
+        commitment = TzktSmartRollupCommitment.create(operation_data)
+        return cls(
+            data=operation_data,
+            commitment=commitment,
+        )
+
+@dataclass(frozen=True)
+class TzktSmartRollupCement:
+    """Wrapper for matched smart rollup cement to the handler"""
+
+    data: TzktOperationData
+    commitment: TzktSmartRollupCommitment
+
+    @classmethod
+    def create(cls, operation_data: TzktOperationData) -> 'TzktSmartRollupCement':
         commitment = TzktSmartRollupCommitment.create(operation_data)
         return cls(
             data=operation_data,

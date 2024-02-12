@@ -9,6 +9,9 @@ from dipdup.codegen.tezos_tzkt import get_parameter_type
 from dipdup.codegen.tezos_tzkt import get_storage_type
 from dipdup.config.tezos_tzkt_operations import OperationsHandlerOriginationPatternConfig as OriginationPatternConfig
 from dipdup.config.tezos_tzkt_operations import (
+    OperationsHandlerSmartRollupCementPatternConfig as SmartRollupCementPatternConfig,
+)
+from dipdup.config.tezos_tzkt_operations import (
     OperationsHandlerSmartRollupExecutePatternConfig as SmartRollupExecutePatternConfig,
 )
 from dipdup.config.tezos_tzkt_operations import OperationsHandlerTransactionPatternConfig as TransactionPatternConfig
@@ -20,6 +23,7 @@ from dipdup.indexes.tezos_tzkt_operations.parser import deserialize_storage
 from dipdup.models.tezos_tzkt import TzktOperationData
 from dipdup.models.tezos_tzkt import TzktOperationType
 from dipdup.models.tezos_tzkt import TzktOrigination
+from dipdup.models.tezos_tzkt import TzktSmartRollupCement
 from dipdup.models.tezos_tzkt import TzktSmartRollupExecute
 from dipdup.models.tezos_tzkt import TzktTransaction
 from dipdup.package import DipDupPackage
@@ -39,7 +43,7 @@ class OperationSubgroup:
 
 
 OperationsHandlerArgumentU = (
-    TzktTransaction[Any, Any] | TzktOrigination[Any] | TzktSmartRollupExecute | TzktOperationData | None
+    TzktTransaction[Any, Any] | TzktOrigination[Any] | TzktSmartRollupExecute| TzktSmartRollupCement | TzktOperationData | None
 )
 MatchedOperationsT = tuple[OperationSubgroup, TzktOperationsHandlerConfigU, deque[OperationsHandlerArgumentU]]
 
@@ -92,6 +96,10 @@ def prepare_operation_handler_args(
         elif isinstance(pattern_config, SmartRollupExecutePatternConfig):
             sr_execute: TzktSmartRollupExecute = TzktSmartRollupExecute.create(operation_data)
             args.append(sr_execute)
+
+        elif isinstance(pattern_config, SmartRollupCementPatternConfig):
+            sr_cement: TzktSmartRollupCement = TzktSmartRollupCement.create(operation_data)
+            args.append(sr_cement)
 
         else:
             raise NotImplementedError
@@ -153,6 +161,19 @@ def match_sr_execute(
 
     return True
 
+def match_sr_cement(
+    pattern_config: SmartRollupCementPatternConfig,
+    operation: TzktOperationData,
+) -> bool:
+    if source := pattern_config.source:
+        if source.address not in (operation.sender_address, None):
+            return False
+    if destination := pattern_config.destination:
+        if destination.address not in (operation.target_address, None):
+            return False
+
+    return True
+
 
 def match_operation_unfiltered_subgroup(
     index: TzktOperationsUnfilteredIndexConfig,
@@ -197,6 +218,9 @@ def match_operation_subgroup(
             elif isinstance(pattern_config, SmartRollupExecutePatternConfig):
                 if operation.type == 'sr_execute':
                     matched = match_sr_execute(pattern_config, operation)
+            elif isinstance(pattern_config, SmartRollupCementPatternConfig):
+                if operation.type == 'sr_cement':
+                    matched = match_sr_cement(pattern_config, operation)
             else:
                 raise FrameworkException('Unsupported pattern type')
 

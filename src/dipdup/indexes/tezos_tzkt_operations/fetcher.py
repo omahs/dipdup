@@ -8,6 +8,9 @@ from typing import Generic
 
 from dipdup.config.tezos_tzkt_operations import OperationsHandlerOriginationPatternConfig as OriginationPatternConfig
 from dipdup.config.tezos_tzkt_operations import (
+    OperationsHandlerSmartRollupCementPatternConfig as SmartRollupCementPatternConfig,
+)
+from dipdup.config.tezos_tzkt_operations import (
     OperationsHandlerSmartRollupExecutePatternConfig as SmartRollupExecutePatternConfig,
 )
 from dipdup.config.tezos_tzkt_operations import OperationsHandlerTransactionPatternConfig as TransactionPatternConfig
@@ -163,6 +166,41 @@ async def get_sr_execute_filters(
 
     addresses = {a for a in addresses if a.startswith('sr1')}
     _logger.info('Fetching smart rollup executions from %s addresses', len(addresses))
+    return addresses
+
+async def get_sr_cement_filters(
+    config: TzktOperationsIndexConfig,
+) -> set[str]:
+    """Get addresses to fetch smart rollup cement commitments from during initial synchronization"""
+    if TzktOperationType.sr_cement not in config.types:
+        return set()
+
+    addresses: set[str] = set()
+
+    if config.contracts:
+        for contract in config.contracts:
+            if contract.address:
+                addresses.add(contract.address)
+
+    for handler_config in config.handlers:
+        for pattern_config in handler_config.pattern:
+            if not isinstance(pattern_config, SmartRollupCementPatternConfig):
+                continue
+
+            if pattern_config.source:
+                if address := pattern_config.source.address:
+                    addresses.add(address)
+                if pattern_config.source.resolved_code_hash:
+                    raise ConfigurationError('Invalid `sr_cement` filter: `source.code_hash`')
+
+            if pattern_config.destination:
+                if address := pattern_config.destination.address:
+                    addresses.add(address)
+                if pattern_config.destination.resolved_code_hash:
+                    raise ConfigurationError('Invalid `sr_cement` filter: `destination.code_hash`')
+
+    addresses = {a for a in addresses if a.startswith('sr1')}
+    _logger.info('Fetching smart rollup cemented commitments from %s addresses', len(addresses))
     return addresses
 
 
@@ -347,6 +385,45 @@ class SmartRollupExecuteAddressFetcherChannel(FetcherChannel[TzktOperationData, 
             self._head = get_operations_head(operations)
 
 
+class SmartRollupCementAddressFetcherChannel(FetcherChannel[TzktOperationData, str]):
+    _datasource: TzktDatasource
+
+    def __init__(
+        self,
+        buffer: defaultdict[int, deque[TzktOperationData]],
+        filter: set[str],
+        first_level: int,
+        last_level: int,
+        datasource: TzktDatasource,
+        field: str,
+    ) -> None:
+        super().__init__(buffer, filter, first_level, last_level, datasource)
+        self._field = field
+
+    async def fetch(self) -> None:
+        if not self._filter:
+            self._head = self._last_level
+            self._offset = self._last_level
+            return
+
+        operations = await self._datasource.get_sr_cement(
+            field=self._field,
+            addresses=self._filter,
+            offset=self._offset,
+            first_level=self._first_level,
+            last_level=self._last_level,
+        )
+
+        for op in operations:
+            self._buffer[op.level].append(op)
+
+        if len(operations) < self._datasource.request_limit:
+            self._head = self._last_level
+        else:
+            self._offset = operations[-1].id
+            self._head = get_operations_head(operations)
+
+
 class OperationUnfilteredFetcherChannel(FetcherChannel[TzktOperationData, None]):
     _datasource: TzktDatasource
 
@@ -388,6 +465,14 @@ class OperationUnfilteredFetcherChannel(FetcherChannel[TzktOperationData, None])
                     last_level=self._last_level,
                     offset=self._offset,
                 )
+            case TzktOperationType.sr_cement:
+                operations = await self._datasource.get_sr_cement(
+                    field='',
+                    addresses=None,
+                    first_level=self._first_level,
+                    last_level=self._last_level,
+                    offset=self._offset,
+                )
             case _:
                 raise FrameworkException('Unsupported operation type')
 
@@ -417,6 +502,7 @@ class OperationFetcher(DataFetcher[TzktOperationData]):
         origination_addresses: set[str],
         origination_hashes: set[int],
         sr_execute_addresses: set[str],
+        sr_cement_addresses: set[str],
         migration_originations: bool = False,
     ) -> None:
         super().__init__(datasource, first_level, last_level)
@@ -425,6 +511,7 @@ class OperationFetcher(DataFetcher[TzktOperationData]):
         self._origination_addresses = origination_addresses
         self._origination_hashes = origination_hashes
         self._sr_execute_addresses = sr_execute_addresses
+        self._sr_cement_addresses = sr_cement_addresses
         self._migration_originations = migration_originations
 
     @classmethod
@@ -438,6 +525,7 @@ class OperationFetcher(DataFetcher[TzktOperationData]):
         transaction_addresses, transaction_hashes = await get_transaction_filters(config, datasource)
         origination_addresses, origination_hashes = await get_origination_filters(config, datasource)
         sr_execute_addresses = await get_sr_execute_filters(config)
+        sr_cement_addresses = await get_sr_cement_filters(config)
 
         return OperationFetcher(
             datasource=datasource,
@@ -448,6 +536,7 @@ class OperationFetcher(DataFetcher[TzktOperationData]):
             origination_addresses=origination_addresses,
             origination_hashes=origination_hashes,
             sr_execute_addresses=sr_execute_addresses,
+            sr_cement_addresses=sr_cement_addresses,
             migration_originations=TzktOperationType.migration in config.types,
         )
 
@@ -493,12 +582,22 @@ class OperationFetcher(DataFetcher[TzktOperationData]):
             ),
             SmartRollupExecuteAddressFetcherChannel(
                 filter=self._sr_execute_addresses,
-                field='sender',
+                field='rollup',
                 **channel_kwargs,  # type: ignore[arg-type]
             ),
             SmartRollupExecuteAddressFetcherChannel(
                 filter=self._sr_execute_addresses,
+                field='sender',
+                **channel_kwargs,  # type: ignore[arg-type]
+            ),
+            SmartRollupCementAddressFetcherChannel(
+                filter=self._sr_cement_addresses,
                 field='rollup',
+                **channel_kwargs,  # type: ignore[arg-type]
+            ),
+            SmartRollupCementAddressFetcherChannel(
+                filter=self._sr_cement_addresses,
+                field='sender',
                 **channel_kwargs,  # type: ignore[arg-type]
             ),
         )

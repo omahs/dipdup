@@ -87,7 +87,7 @@ TRANSACTION_OPERATION_FIELDS = (
     'parameter',
     'hasInternals',
 )
-SR_EXECUTE_OPERATION_FIELDS = (
+SR_OPERATION_FIELDS = (
     *OPERATION_FIELDS,
     'rollup',
     'commitment',
@@ -141,7 +141,6 @@ EVENT_FIELDS = (
     'codeHash',
     'transactionId',
 )
-
 
 EmptyCallback = Callable[[], Awaitable[None]]
 HeadCallback = Callable[['TzktDatasource', TzktHeadBlockData], Awaitable[None]]
@@ -786,7 +785,7 @@ class TzktDatasource(IndexDatasource[TzktDatasourceConfig]):
             last_level=last_level,
             offset=None,
             limit=limit,
-            select=SR_EXECUTE_OPERATION_FIELDS,
+            select=SR_OPERATION_FIELDS,
             values=True,
             sort='level',
             status='applied',
@@ -816,6 +815,57 @@ class TzktDatasource(IndexDatasource[TzktDatasourceConfig]):
     ) -> AsyncIterator[tuple[TzktOperationData, ...]]:
         async for batch in self._iter_batches(
             self.get_sr_execute,
+            field,
+            addresses,
+            first_level,
+            last_level,
+        ):
+            yield batch
+
+    async def get_sr_cement(
+        self,
+        field: str,
+        addresses: set[str] | None,
+        first_level: int | None = None,
+        last_level: int | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> tuple[TzktOperationData, ...]:
+        params = self._get_request_params(
+            first_level=first_level,
+            last_level=last_level,
+            offset=None,
+            limit=limit,
+            select=SR_OPERATION_FIELDS,
+            values=True,
+            sort='level',
+            status='applied',
+        )
+        # TODO: TzKT doesn't support sort+cr currently
+        if offset is not None:
+            params['id.gt'] = offset
+
+        if addresses:
+            params[f'{field}.in'] = ','.join(addresses)
+
+        raw_transactions = await self._request_values_dict(
+            'get',
+            url='v1/operations/sr_cement',
+            params=params,
+        )
+
+        # NOTE: `type` field needs to be set manually when requesting operations by specific type
+        return tuple(TzktOperationData.from_json(op, type_='sr_cement') for op in raw_transactions)
+
+    async def iter_sr_cement(
+        self,
+        field: str,
+        addresses: set[str],
+        first_level: int,
+        last_level: int,
+    ) -> AsyncIterator[tuple[TzktOperationData, ...]]:
+        async for batch in self._iter_batches(
+            self.get_sr_cement,
             field,
             addresses,
             first_level,
@@ -1251,20 +1301,21 @@ class TzktDatasource(IndexDatasource[TzktDatasourceConfig]):
 
         # NOTE: Process extensive data from buffer
         for buffered_message in self._buffer.yield_from():
-            if buffered_message.type == TzktMessageType.operation:
-                await self._process_operations_data(cast(list[dict[str, Any]], buffered_message.data))
-            elif buffered_message.type == TzktMessageType.token_transfer:
-                await self._process_token_transfers_data(cast(list[dict[str, Any]], buffered_message.data))
-            elif buffered_message.type == TzktMessageType.token_balance:
-                await self._process_token_balances_data(cast(list[dict[str, Any]], buffered_message.data))
-            elif buffered_message.type == TzktMessageType.big_map:
-                await self._process_big_maps_data(cast(list[dict[str, Any]], buffered_message.data))
-            elif buffered_message.type == TzktMessageType.head:
-                await self._process_head_data(cast(dict[str, Any], buffered_message.data))
-            elif buffered_message.type == TzktMessageType.event:
-                await self._process_events_data(cast(list[dict[str, Any]], buffered_message.data))
-            else:
-                raise NotImplementedError(f'Unknown message type: {buffered_message.type}')
+            match buffered_message.type:
+                case TzktMessageType.operation:
+                    await self._process_operations_data(cast(list[dict[str, Any]], buffered_message.data))
+                case TzktMessageType.token_transfer:
+                    await self._process_token_transfers_data(cast(list[dict[str, Any]], buffered_message.data))
+                case TzktMessageType.token_balance:
+                    await self._process_token_balances_data(cast(list[dict[str, Any]], buffered_message.data))
+                case TzktMessageType.big_map:
+                    await self._process_big_maps_data(cast(list[dict[str, Any]], buffered_message.data))
+                case TzktMessageType.head:
+                    await self._process_head_data(cast(dict[str, Any], buffered_message.data))
+                case TzktMessageType.event:
+                    await self._process_events_data(cast(list[dict[str, Any]], buffered_message.data))
+                case _:
+                    raise NotImplementedError(f'Unknown message type: {buffered_message.type}')
 
     async def _process_operations_data(self, data: list[dict[str, Any]]) -> None:
         """Parse and emit raw operations from WS"""

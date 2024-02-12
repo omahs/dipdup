@@ -16,6 +16,7 @@ from dipdup.config.tezos_tzkt import TzktIndexConfig
 from dipdup.exceptions import ConfigInitializationException
 from dipdup.exceptions import ConfigurationError
 from dipdup.models.tezos_tzkt import OriginationSubscription
+from dipdup.models.tezos_tzkt import SmartRollupCementSubscription
 from dipdup.models.tezos_tzkt import SmartRollupExecuteSubscription
 from dipdup.models.tezos_tzkt import TransactionSubscription
 from dipdup.models.tezos_tzkt import TzktOperationType
@@ -274,6 +275,43 @@ class OperationsHandlerSmartRollupExecutePatternConfig(TezosPatternConfig, Subgr
 
 
 @dataclass
+class OperationsHandlerSmartRollupCementPatternConfig(TezosPatternConfig, SubgroupIndexMixin):
+    """Operation handler pattern config
+
+    :param type: always 'sr_cement'
+    :param source: Match operations by source contract alias
+    :param destination: Match operations by destination contract alias
+    :param optional: Whether can operation be missing in operation group
+    :param alias: Alias for operation (helps to avoid duplicates)
+    """
+
+    type: Literal['sr_cement'] = 'sr_cement'
+    source: TezosContractConfig | None = None
+    destination: TezosContractConfig | None = None
+    optional: bool = False
+    alias: str | None = None
+
+    def __post_init_post_parse__(self) -> None:
+        SubgroupIndexMixin.__post_init_post_parse__(self)
+
+    def iter_imports(self, package: str) -> Iterator[tuple[str, str]]:
+        yield 'dipdup.models.tezos_tzkt', 'TzktSmartRollupCement'
+
+    def iter_arguments(self) -> Iterator[tuple[str, str]]:
+        arg_name = pascal_to_snake(self.alias or f'sr_cement_{self.subgroup_index}')
+        if self.optional:
+            yield arg_name, 'TzktSmartRollupCement | None'
+        else:
+            yield arg_name, 'TzktSmartRollupCement'
+
+    @property
+    def typed_contract(self) -> TezosContractConfig | None:
+        if self.destination:
+            return self.destination
+        return None
+
+
+@dataclass
 class TzktOperationsIndexConfig(TzktIndexConfig):
     """Operation index config
 
@@ -320,6 +358,16 @@ class TzktOperationsIndexConfig(TzktIndexConfig):
                     if contract_config.address and contract_config.address.startswith('sr1'):
                         subs.add(SmartRollupExecuteSubscription(address=contract_config.address))
 
+        if TzktOperationType.sr_cement in self.types:
+            if self.datasource.merge_subscriptions:
+                subs.add(SmartRollupCementSubscription())
+            else:
+                for contract_config in self.contracts:
+                    if not isinstance(contract_config, TezosContractConfig):
+                        raise ConfigInitializationException
+                    if contract_config.address and contract_config.address.startswith('sr1'):
+                        subs.add(SmartRollupCementSubscription(address=contract_config.address))
+
         return subs
 
     @classmethod
@@ -334,6 +382,7 @@ OperationsHandlerPatternConfigU = (
     OperationsHandlerTransactionPatternConfig
     | OperationsHandlerOriginationPatternConfig
     | OperationsHandlerSmartRollupExecutePatternConfig
+    | OperationsHandlerSmartRollupCementPatternConfig
 )
 
 

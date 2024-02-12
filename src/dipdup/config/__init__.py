@@ -964,6 +964,10 @@ class DipDupConfig:
                         if isinstance(pattern_config.destination, str):
                             pattern_config.destination = self.get_tezos_contract(pattern_config.destination)
 
+                    elif isinstance(pattern_config, OperationsHandlerSmartRollupCementPatternConfig):
+                        if isinstance(pattern_config.destination, str):
+                            pattern_config.destination = self.get_tezos_contract(pattern_config.destination)
+
         elif isinstance(index_config, TzktBigMapsIndexConfig):
             for handler_config in index_config.handlers:
                 handler_config.parent = index_config
@@ -1065,6 +1069,7 @@ from dipdup.config.tezos_tzkt_big_maps import TzktBigMapsIndexConfig
 from dipdup.config.tezos_tzkt_events import TzktEventsIndexConfig
 from dipdup.config.tezos_tzkt_head import TzktHeadIndexConfig
 from dipdup.config.tezos_tzkt_operations import OperationsHandlerOriginationPatternConfig
+from dipdup.config.tezos_tzkt_operations import OperationsHandlerSmartRollupCementPatternConfig
 from dipdup.config.tezos_tzkt_operations import OperationsHandlerSmartRollupExecutePatternConfig
 from dipdup.config.tezos_tzkt_operations import OperationsHandlerTransactionPatternConfig
 from dipdup.config.tezos_tzkt_operations import TzktOperationsIndexConfig
