@@ -3,11 +3,11 @@ from typing import Any
 
 from dipdup.config.evm_subsquid_transactions import SubsquidTransactionsHandlerConfig
 from dipdup.config.evm_subsquid_transactions import SubsquidTransactionsIndexConfig
-from dipdup.datasources.evm_node import NODE_BATCH_SIZE
 from dipdup.datasources.evm_subsquid import SubsquidDatasource
 from dipdup.exceptions import ConfigInitializationException
 from dipdup.indexes.evm_subsquid import SubsquidIndex
 from dipdup.indexes.evm_subsquid import get_sighash
+from dipdup.indexes.evm_subsquid import validate_tx_level
 from dipdup.indexes.evm_subsquid_transactions.fetcher import TransactionFetcher
 from dipdup.indexes.evm_subsquid_transactions.matcher import match_transactions
 from dipdup.models.evm_node import EvmNodeTransactionData
@@ -59,7 +59,10 @@ class SubsquidTransactionsIndex(
     async def _synchronize_node(self, sync_level: int) -> None:
         batch_first_level = self.state.level + 1
         while batch_first_level <= sync_level:
-            batch_last_level = min(batch_first_level + NODE_BATCH_SIZE, sync_level)
+            batch_last_level = min(batch_first_level, sync_level)
+            if not await validate_tx_level(batch_first_level):
+                batch_first_level = batch_last_level + 1
+                continue
 
             block_batch = await self.get_blocks_batch(
                 levels=set(range(batch_first_level, batch_last_level + 1)),
@@ -74,6 +77,8 @@ class SubsquidTransactionsIndex(
 
                 await self._process_level_data(parsed_transactions, sync_level)
                 Metrics.set_sqd_processor_last_block(level)
+            else:
+                await self._update_state(level=batch_last_level)
 
             batch_first_level = batch_last_level + 1
 

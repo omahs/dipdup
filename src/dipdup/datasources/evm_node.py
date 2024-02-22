@@ -44,7 +44,7 @@ from dipdup.utils import Watchdog
 WEB3_CACHE_SIZE = 256
 NODE_LEVEL_TIMEOUT = 1.0
 # NOTE: This value was chosen empirically and likely is not optimal.
-NODE_BATCH_SIZE = 32
+NODE_BATCH_SIZE = 99
 NODE_LAST_MILE = 128
 POLL_INTERVAL = 5
 
@@ -159,7 +159,7 @@ class EvmNodeDatasource(IndexDatasource[EvmNodeDatasourceConfig]):
             )
 
             if raw_logs := level_data.logs:
-                logs = tuple(EvmNodeLogData.from_json(log, head.timestamp) for log in raw_logs)
+                logs = tuple(EvmNodeLogData.from_json(log, head.timestamp, 0) for log in raw_logs)
                 await self.emit_logs(logs)
             if level_data.fetch_transactions:
                 full_block = await self.get_block_by_level(

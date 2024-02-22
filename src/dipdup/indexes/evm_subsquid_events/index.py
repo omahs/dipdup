@@ -10,6 +10,7 @@ from dipdup.datasources.evm_subsquid import SubsquidDatasource
 from dipdup.exceptions import ConfigInitializationException
 from dipdup.exceptions import FrameworkException
 from dipdup.indexes.evm_subsquid import SubsquidIndex
+from dipdup.indexes.evm_subsquid import validate_logs_batch_level
 from dipdup.indexes.evm_subsquid_events.fetcher import EventLogFetcher
 from dipdup.indexes.evm_subsquid_events.matcher import match_events
 from dipdup.models.evm_node import EvmNodeLogData
@@ -63,19 +64,25 @@ class SubsquidEventsIndex(
         batch_first_level = self.state.level + 1
         while batch_first_level <= sync_level:
             batch_last_level = min(batch_first_level + NODE_BATCH_SIZE, sync_level)
+            if not await validate_logs_batch_level(batch_first_level, batch_last_level):
+                batch_first_level = batch_last_level + 1
+                continue
 
             log_batch = await self.get_logs_batch(batch_first_level, batch_last_level)
             block_batch = await self.get_blocks_batch(
                 levels=set(log_batch.keys()),
-                full_transactions=True,
+                full_transactions=False,
             )
 
             for level_logs, level_block in zip(log_batch.values(), block_batch.values(), strict=True):
                 timestamp = int(level_block['timestamp'], 16)
-                parsed_level_logs = tuple(EvmNodeLogData.from_json(log, timestamp) for log in level_logs)
+                gas_used = int(level_block['gasUsed'], 16)
+                parsed_level_logs = tuple(EvmNodeLogData.from_json(log, timestamp, gas_used) for log in level_logs)
 
                 await self._process_level_data(parsed_level_logs, sync_level)
                 Metrics.set_sqd_processor_last_block(parsed_level_logs[0].level)
+            else:
+                await self._update_state(level=batch_last_level)
 
             batch_first_level = batch_last_level + 1
 
