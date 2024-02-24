@@ -746,6 +746,12 @@ class DipDupConfig:
             raise ConfigurationError('`datasource` field must refer to Subsquid datasource')
         return datasource
 
+    def get_blockscout_datasource(self, name: str) -> BlockscoutDatasourceConfig:
+        datasource = self.get_datasource(name)
+        if not isinstance(datasource, BlockscoutDatasourceConfig):
+            raise ConfigurationError('`datasource` field must refer to Blockscout datasource')
+        return datasource
+
     def get_evm_node_datasource(self, name: str) -> EvmNodeDatasourceConfig:
         datasource = self.get_datasource(name)
         if not isinstance(datasource, EvmNodeDatasourceConfig):
@@ -930,6 +936,8 @@ class DipDupConfig:
                 index_config.datasource = self.get_tzkt_datasource(index_config.datasource)
             elif 'subsquid' in index_config.kind:
                 index_config.datasource = self.get_subsquid_datasource(index_config.datasource)
+            elif 'blockscout' in index_config.kind:
+                index_config.datasource = self.get_blockscout_datasource(index_config.datasource)
             else:
                 raise FrameworkException(f'Unknown datasource type for index `{index_config.name}`')
 
@@ -1007,7 +1015,7 @@ class DipDupConfig:
                 if isinstance(handler_config.contract, str):
                     handler_config.contract = self.get_tezos_contract(handler_config.contract)
 
-        elif isinstance(index_config, SubsquidEventsIndexConfig):
+        elif isinstance(index_config, SubsquidEventsIndexConfig | BlockscoutEventsIndexConfig):
             for handler_config in index_config.handlers:
                 handler_config.parent = index_config
 
@@ -1017,7 +1025,7 @@ class DipDupConfig:
         elif isinstance(index_config, SubsquidTracesIndexConfig):
             raise NotImplementedError
 
-        elif isinstance(index_config, SubsquidTransactionsIndexConfig):
+        elif isinstance(index_config, SubsquidTransactionsIndexConfig | BlockscoutTransactionsIndexConfig):
             for handler_config in index_config.handlers:
                 handler_config.parent = index_config
 
@@ -1058,9 +1066,12 @@ from dipdup.config.coinbase import CoinbaseDatasourceConfig
 from dipdup.config.evm import EvmContractConfig
 from dipdup.config.evm_node import EvmNodeDatasourceConfig
 from dipdup.config.evm_subsquid import SubsquidDatasourceConfig
+from dipdup.config.evm_blockscout import BlockscoutDatasourceConfig
 from dipdup.config.evm_subsquid_events import SubsquidEventsIndexConfig
 from dipdup.config.evm_subsquid_traces import SubsquidTracesIndexConfig
 from dipdup.config.evm_subsquid_transactions import SubsquidTransactionsIndexConfig
+from dipdup.config.evm_blockscout_events import BlockscoutEventsIndexConfig
+from dipdup.config.evm_blockscout_transactions import BlockscoutTransactionsIndexConfig
 from dipdup.config.http import HttpDatasourceConfig
 from dipdup.config.ipfs import IpfsDatasourceConfig
 from dipdup.config.tezos import TezosContractConfig
@@ -1086,6 +1097,7 @@ DatasourceConfigU = (
     | HttpDatasourceConfig
     | IpfsDatasourceConfig
     | SubsquidDatasourceConfig
+    | BlockscoutDatasourceConfig
     | EvmNodeDatasourceConfig
     | TzipMetadataDatasourceConfig
     | TzktDatasourceConfig
@@ -1100,8 +1112,9 @@ TzktIndexConfigU = (
     | TzktTokenBalancesIndexConfig
 )
 SubsquidIndexConfigU = SubsquidEventsIndexConfig | SubsquidTracesIndexConfig | SubsquidTransactionsIndexConfig
+BlockscoutIndexConfigU = BlockscoutEventsIndexConfig | BlockscoutTransactionsIndexConfig
 
-ResolvedIndexConfigU = TzktIndexConfigU | SubsquidIndexConfigU
+ResolvedIndexConfigU = TzktIndexConfigU | SubsquidIndexConfigU | BlockscoutIndexConfigU
 IndexConfigU = ResolvedIndexConfigU | IndexTemplateConfig
 
 
@@ -1110,10 +1123,10 @@ def _patch_annotations(replace_table: dict[str, str]) -> None:
 
     DipDup YAML config uses string aliases for contracts and datasources. During `DipDupConfig.load` these
     aliases are resolved to actual configs from corresponding sections and never become strings again.
-    This hack allows to add `str` in Unions before loading config so we don't need to write `isinstance(...)`
+    This hack allows to add `str` in Unions before loading config, so we don't need to write `isinstance(...)`
     checks everywhere.
 
-    You can revert these changes by calling `patch_annotations(orinal_annotations)`, but tests will fail.
+    You can revert these changes by calling `patch_annotations(original_annotations)`, but tests will fail.
     """
     self = importlib.import_module(__name__)
     submodules = tuple(inspect.getmembers(self, inspect.ismodule))
@@ -1145,6 +1158,7 @@ def _patch_annotations(replace_table: dict[str, str]) -> None:
 _original_to_aliased = {
     'TzktDatasourceConfig': 'str | TzktDatasourceConfig',
     'SubsquidDatasourceConfig': 'str | SubsquidDatasourceConfig',
+    'BlockscoutDatasourceConfig': 'str | BlockscoutDatasourceConfig',
     'ContractConfig': 'str | ContractConfig',
     'ContractConfig | None': 'str | ContractConfig | None',
     'TezosContractConfig': 'str | TezosContractConfig',

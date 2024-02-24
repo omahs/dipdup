@@ -28,6 +28,8 @@ from dipdup.config.evm import EvmContractConfig
 from dipdup.config.evm_subsquid_events import SubsquidEventsIndexConfig
 from dipdup.config.evm_subsquid_traces import SubsquidTracesIndexConfig
 from dipdup.config.evm_subsquid_transactions import SubsquidTransactionsIndexConfig
+from dipdup.config.evm_blockscout_events import BlockscoutEventsIndexConfig
+from dipdup.config.evm_blockscout_transactions import BlockscoutTransactionsIndexConfig
 from dipdup.config.tezos import TezosContractConfig
 from dipdup.config.tezos_tzkt_big_maps import TzktBigMapsIndexConfig
 from dipdup.config.tezos_tzkt_events import TzktEventsIndexConfig
@@ -45,6 +47,7 @@ from dipdup.datasources import IndexDatasource
 from dipdup.datasources.coinbase import CoinbaseDatasource
 from dipdup.datasources.evm_node import EvmNodeDatasource
 from dipdup.datasources.evm_subsquid import SubsquidDatasource
+from dipdup.datasources.evm_blockscout import BlockscoutDatasource
 from dipdup.datasources.http import HttpDatasource
 from dipdup.datasources.ipfs import IpfsDatasource
 from dipdup.datasources.tezos_tzkt import TzktDatasource
@@ -318,10 +321,12 @@ class DipDupContext:
             | SubsquidEventsIndex
             | SubsquidTracesIndex
             | SubsquidTransactionsIndex
+            | BlockscoutEventsIndex
+            | BlockscoutTransactionsIndex
         )
 
         datasource_name = index_config.datasource.name
-        datasource: TzktDatasource | SubsquidDatasource
+        datasource: TzktDatasource | SubsquidDatasource | BlockscoutDatasource
         node_configs: tuple[EvmNodeDatasourceConfig, ...] = ()
 
         if isinstance(index_config, TzktOperationsIndexConfig | TzktOperationsUnfilteredIndexConfig):
@@ -356,6 +361,12 @@ class DipDupContext:
             if node_field:
                 node_configs = node_configs + node_field if isinstance(node_field, tuple) else (node_field,)
             index = SubsquidTransactionsIndex(self, index_config, datasource)
+        elif isinstance(index_config, BlockscoutEventsIndexConfig):
+            datasource = self.get_blockscout_datasource(datasource_name)
+            index = BlockscoutEventsIndex(self, index_config, datasource)
+        elif isinstance(index_config, BlockscoutTransactionsIndexConfig):
+            datasource = self.get_blockscout_datasource(datasource_name)
+            index = BlockscoutTransactionsIndex(self, index_config, datasource)
         else:
             raise NotImplementedError
 
@@ -443,6 +454,10 @@ class DipDupContext:
     def get_subsquid_datasource(self, name: str) -> SubsquidDatasource:
         """Get `evm.subsquid` datasource by name"""
         return self._get_datasource(name, SubsquidDatasource)
+
+    def get_blockscout_datasource(self, name: str) -> BlockscoutDatasource:
+        """Get `evm.blockscout` datasource by name"""
+        return self._get_datasource(name, BlockscoutDatasource)
 
     def get_evm_node_datasource(self, name: str) -> EvmNodeDatasource:
         """Get `evm.node` datasource by name or by linked `evm.subsquid` datasource name"""

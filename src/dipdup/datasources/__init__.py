@@ -76,6 +76,7 @@ def create_datasource(config: DatasourceConfig) -> Datasource[Any]:
     from dipdup.config.coinbase import CoinbaseDatasourceConfig
     from dipdup.config.evm_node import EvmNodeDatasourceConfig
     from dipdup.config.evm_subsquid import SubsquidDatasourceConfig
+    from dipdup.config.evm_blockscout import BlockscoutDatasourceConfig
     from dipdup.config.http import HttpDatasourceConfig
     from dipdup.config.ipfs import IpfsDatasourceConfig
     from dipdup.config.tezos_tzkt import TzktDatasourceConfig
@@ -84,6 +85,7 @@ def create_datasource(config: DatasourceConfig) -> Datasource[Any]:
     from dipdup.datasources.coinbase import CoinbaseDatasource
     from dipdup.datasources.evm_node import EvmNodeDatasource
     from dipdup.datasources.evm_subsquid import SubsquidDatasource
+    from dipdup.datasources.evm_blockscout import BlockscoutDatasource
     from dipdup.datasources.http import HttpDatasource
     from dipdup.datasources.ipfs import IpfsDatasource
     from dipdup.datasources.tezos_tzkt import TzktDatasource
@@ -97,6 +99,7 @@ def create_datasource(config: DatasourceConfig) -> Datasource[Any]:
         HttpDatasourceConfig: HttpDatasource,
         IpfsDatasourceConfig: IpfsDatasource,
         SubsquidDatasourceConfig: SubsquidDatasource,
+        BlockscoutDatasourceConfig: BlockscoutDatasource,
         EvmNodeDatasourceConfig: EvmNodeDatasource,
     }
 
