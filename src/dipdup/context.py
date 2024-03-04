@@ -303,6 +303,8 @@ class DipDupContext:
         from dipdup.indexes.evm_subsquid_events.index import SubsquidEventsIndex
         from dipdup.indexes.evm_subsquid_traces.index import SubsquidTracesIndex
         from dipdup.indexes.evm_subsquid_transactions.index import SubsquidTransactionsIndex
+        from dipdup.indexes.evm_blockscout_events.index import BlockscoutEventsIndex
+        from dipdup.indexes.evm_blockscout_transactions.index import BlockscoutTransactionsIndex
         from dipdup.indexes.tezos_tzkt_big_maps.index import TzktBigMapsIndex
         from dipdup.indexes.tezos_tzkt_events.index import TzktEventsIndex
         from dipdup.indexes.tezos_tzkt_head.index import TzktHeadIndex
