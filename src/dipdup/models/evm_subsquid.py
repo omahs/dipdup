@@ -262,6 +262,10 @@ class SubsquidTransactionData(HasLevel):
         )
         v = int(transaction_json['v'], 16) if transaction_json['v'] else None
         y_parity = bool(int(transaction_json['yParity'], 16)) if transaction_json['yParity'] else None
+        if not transaction_json.get('gasUsed'):
+            transaction_json['gasUsed'] = '0x0'
+        if not transaction_json.get('sighash'):
+            transaction_json['sighash'] = '0x'
         return SubsquidTransactionData(
             chain_id=transaction_json['chainId'],
             cumulative_gas_used=cumulative_gas_used,
